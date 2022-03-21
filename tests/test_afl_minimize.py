@@ -135,6 +135,13 @@ class AflMinimizeTestCase(unittest.TestCase):
         self.assertListEqual(queue_ls, sorted(os.listdir(os.path.join(test_sync_dir, 'fuzz000/queue'))))
         self.assertListEqual(queue_ls, sorted(os.listdir(os.path.join(test_sync_dir, 'fuzz001/queue'))))
 
+    def test_convert_mem_limit(self):
+        self.assertIsNone(afl_minimize.convert_mem_limit(None))
+        self.assertEqual(afl_minimize.convert_mem_limit('none'), 'none')
+        self.assertEqual(afl_minimize.convert_mem_limit(1234), 1234)
+        with self.assertRaises(ValueError):
+            afl_minimize.convert_mem_limit('junk')
+
     def test_main(self):
         argv = ['afl-minimize', '-h']
         with self.assertRaises(SystemExit):

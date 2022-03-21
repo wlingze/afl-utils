@@ -1,5 +1,5 @@
 """
-Copyright 2015-2016 @_rc0r <hlt99@blinkenshell.org>
+Copyright 2015-2021 @_rc0r <hlt99@blinkenshell.org>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import threading
 import afl_utils
 from afl_utils import AflThread, afl_collect
 from afl_utils.AflPrettyPrint import *
+
 
 def show_info():
     print(clr.CYA + "afl-vcrash " + clr.BRI + "%s" % afl_utils.__version__ + clr.RST + " by %s" % afl_utils.__author__)
@@ -93,8 +94,9 @@ def build_target_cmd(target_cmdline):
 def main(argv):
     show_info()
 
-    parser = argparse.ArgumentParser(description="afl-vcrash verifies that afl-fuzz crash samples lead to crashes in \
-the target binary.", usage="afl-vcrash [-f LIST_FILENAME] [-h] [-j THREADS] [-q] [-r] [-t TIMEOUT] collection_dir -- target_command")
+    parser = argparse.ArgumentParser(
+        description="afl-vcrash verifies that afl-fuzz crash samples lead to crashes in the target binary.",
+        usage="afl-vcrash [-f LIST_FILENAME] [-h] [-j THREADS] [-q] [-r] [-t TIMEOUT] collection_dir -- target_command")
 
     parser.add_argument("collection_dir",
                         help="Directory holding all crash samples that will be verified.")
@@ -126,7 +128,8 @@ particularly useful when combined with '-r' or '-f'.")
 
     args.target_cmd = build_target_cmd(args.target_cmd)
 
-    invalid_samples, timeout_samples = verify_samples(int(args.num_threads), crash_samples, args.target_cmd, int(args.timeout_secs))
+    invalid_samples, timeout_samples = verify_samples(int(args.num_threads), crash_samples, args.target_cmd,
+                                                      int(args.timeout_secs))
 
     print_warn("Found %d invalid crash samples." % len(invalid_samples))
     print_warn("%d samples caused a timeout." % len(timeout_samples))

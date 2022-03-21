@@ -1,5 +1,5 @@
 """
-Copyright 2015-2016 @_rc0r <hlt99@blinkenshell.org>
+Copyright 2015-2021 @_rc0r <hlt99@blinkenshell.org>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,8 @@ from afl_utils.AflPrettyPrint import clr, print_ok, print_warn, print_err
 from db_connectors import con_sqlite
 
 
-db_table_spec = """`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, `last_update` INTEGER NOT NULL, `start_time`INTEGER NOT NULL,
+db_table_spec = """`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, `last_update` INTEGER NOT NULL,
+`start_time` INTEGER NOT NULL,
 `fuzzer_pid` INTEGER NOT NULL, `cycles_done` INTEGER NOT NULL, `execs_done` INTEGER NOT NULL,
 `execs_per_sec` REAL NOT NULL, `paths_total` INTEGER NOT NULL, `paths_favored` INTEGER NOT NULL,
 `paths_found` INTEGER NOT NULL, `paths_imported` INTEGER NOT NULL, `max_depth` INTEGER NOT NULL,
@@ -94,70 +95,72 @@ def fuzzer_alive(pid):
 
 
 def parse_stat_file(stat_file, summary=True):
+    summary_stats = {
+        'fuzzer_pid': None,
+        'execs_done': None,
+        'execs_per_sec': None,
+        'paths_total': None,
+        'paths_favored': None,
+        'pending_favs': None,
+        'pending_total': None,
+        'unique_crashes': None,
+        'unique_hangs': None,
+        'afl_banner': None
+    }
+
+    complete_stats = {
+        'last_update': '',
+        'start_time': '',
+        'fuzzer_pid': '',
+        'cycles_done': '',
+        'execs_done': '',
+        'execs_per_sec': '',
+        'paths_total': '',
+        'paths_favored': '',
+        'paths_found': '',
+        'paths_imported': '',
+        'max_depth': '',
+        'cur_path': '',
+        'pending_favs': '',
+        'pending_total': '',
+        'variable_paths': '',
+        'stability': '',
+        'bitmap_cvg': '',
+        'unique_crashes': '',
+        'unique_hangs': '',
+        'last_path': '',
+        'last_crash': '',
+        'last_hang': '',
+        'execs_since_crash': '',
+        'exec_timeout': '',
+        'afl_banner': '',
+        'afl_version': '',
+        'command_line': ''
+    }
+
+    stats = None
+
     try:
-        f = open(stat_file, "r")
-        lines = f.readlines()
-        f.close()
+        with open(stat_file, "r") as f:
+            lines = f.readlines()
+            for _l in lines:
+                if summary:
+                    stats = summary_stats
+                    for k in stats.keys():
+                        if k != "fuzzer_pid":
+                            if k in _l:
+                                stats[k] = _l[19:].strip(": \r\n")
+                        else:
+                            if k in _l:
+                                stats[k] = fuzzer_alive(int(_l[19:].strip(": \r\n")))
+                else:
+                    stats = complete_stats
+                    for k in stats.keys():
+                        if k in _l:
+                            stats[k] = _l[19:].strip(": %\r\n")
 
-        summary_stats = {
-            'fuzzer_pid': None,
-            'execs_done': None,
-            'execs_per_sec': None,
-            'paths_total': None,
-            'paths_favored': None,
-            'pending_favs': None,
-            'pending_total': None,
-            'unique_crashes': None,
-            'unique_hangs': None,
-            'afl_banner': None
-        }
-
-        complete_stats = {
-            'last_update': '',
-            'start_time': '',
-            'fuzzer_pid': '',
-            'cycles_done': '',
-            'execs_done': '',
-            'execs_per_sec': '',
-            'paths_total': '',
-            'paths_favored': '',
-            'paths_found': '',
-            'paths_imported': '',
-            'max_depth': '',
-            'cur_path': '',
-            'pending_favs': '',
-            'pending_total': '',
-            'variable_paths': '',
-            'stability': '',
-            'bitmap_cvg': '',
-            'unique_crashes': '',
-            'unique_hangs': '',
-            'last_path': '',
-            'last_crash': '',
-            'last_hang': '',
-            'execs_since_crash': '',
-            'exec_timeout': '',
-            'afl_banner': '',
-            'afl_version': '',
-            'command_line': ''
-        }
-
-        for l in lines:
-            if summary:
-                stats = summary_stats
-                for k in stats.keys():
-                    if k != "fuzzer_pid":
-                        if k in l:
-                            stats[k] = l[19:].strip(": \r\n")
-                    else:
-                        if k in l:
-                            stats[k] = fuzzer_alive(int(l[19:].strip(": \r\n")))
-            else:
-                stats = complete_stats
-                for k in stats.keys():
-                    if k in l:
-                        stats[k] = l[19:].strip(": %\r\n")
-
+            if not stats:
+                print_warn("Stat file " + clr.GRA + "%s" % stat_file + clr.RST + " seems to be empty!")
         return stats
     except FileNotFoundError as e:
         print_warn("Stat file " + clr.GRA + "%s" % e.filename + clr.RST + " not found!")
@@ -321,11 +324,13 @@ def prettify_stat(stat, dstat, console=True):
         ds_pend = clr.GRA + ds_pend + clr.RST
 
         pretty_stat =\
-            "[%s on %s]\n %sAlive:%s   %s%d/%d%s%s\n %sExecs:%s   %d%sm\n %sSpeed:%s   %s%.1f%sx/s%s\n %sPend:%s    %d/%d%s\n" \
+            "[%s on %s]\n %sAlive:%s   %s%d/%d%s%s\n %sExecs:%s   %d%sm\n %sSpeed:%s   %s%.1f%sx/s%s\n" \
+            " %sPend:%s    %d/%d%s\n" \
             " %sCrashes:%s %s%d%s%s" % (_stat['afl_banner'], _stat['host'], lbl, rst, alc, _stat['fuzzer_pid'],
-                                        _stat['fuzzers'], rst, ds_alive, lbl, rst, _stat['execs_done'], ds_exec, lbl, rst, slc,
-                                        _stat['execs_per_sec'], ds_speed, rst, lbl, rst, _stat['pending_total'],
-                                        _stat['pending_favs'], ds_pend, lbl, rst, clc, _stat['unique_crashes'], rst, ds_crash)
+                                        _stat['fuzzers'], rst, ds_alive, lbl, rst, _stat['execs_done'], ds_exec, lbl,
+                                        rst, slc, _stat['execs_per_sec'], ds_speed, rst, lbl, rst,
+                                        _stat['pending_total'], _stat['pending_favs'], ds_pend, lbl, rst, clc,
+                                        _stat['unique_crashes'], rst, ds_crash)
     else:
         pretty_stat = "[%s #%s]\nAlive: %d/%d%s\nExecs: %d%sm\nSpeed: %.1f%sx/s\n" \
                       "Pend: %d/%d%s\nCrashes: %d%s" %\
@@ -381,11 +386,11 @@ def fetch_stats(config_settings, twitter_inst):
 
         tweet = prettify_stat(sum_stats, stat_change, False)
 
-        l = len(tweet)
-        c = clr.LRD if l > 140 else clr.LGN
+        _l = len(tweet)
+        c = clr.LRD if _l > 140 else clr.LGN
 
         if twitter_inst:
-            print_ok("Tweeting status (%s%d" % (c, l) + clr.RST + " chars)...")
+            print_ok("Tweeting status (%s%d" % (c, _l) + clr.RST + " chars)...")
             try:
                 twitter_inst.statuses.update(status=shorten_tweet(tweet))
             except (twitter.TwitterHTTPError, URLError):

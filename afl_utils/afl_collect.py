@@ -1,5 +1,5 @@
 """
-Copyright 2015-2016 @_rc0r <hlt99@blinkenshell.org>
+Copyright 2015-2021 @_rc0r <hlt99@blinkenshell.org>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import afl_utils
 from afl_utils import SampleIndex, AflThread
 from afl_utils.AflPrettyPrint import clr, print_ok, print_err, print_warn
 from db_connectors import con_sqlite
+import datetime
 
 # afl-collect global settings
 global_crash_subdirs = "crashes"
@@ -40,14 +41,17 @@ fuzzer_stats_filename = "fuzzer_stats"
 
 # Path to gdb binary
 gdb_binary = shutil.which("gdb")
-if gdb_binary is None:
-    print_err("gdb binary not found!")
-    sys.exit(1)
 
 
 # afl-collect database table spec
 db_table_spec = """`Sample` TEXT PRIMARY KEY NOT NULL, `Classification` TEXT NOT NULL,
-`Classification_Description` TEXT NOT NULL, `Hash` TEXT, `User_Comment` TEXT"""
+`Classification_Description` TEXT NOT NULL, `Hash` TEXT, `Timestamp` DATETIME NOT NULL, `User_Comment` TEXT"""
+
+
+def check_gdb():
+    if gdb_binary is None:
+        print_err("gdb binary not found!")
+        sys.exit(1)
 
 
 def show_info():
@@ -142,7 +146,8 @@ def build_sample_index(sync_dir, out_dir, fuzzer_instances, db=None, min_filenam
 
                 if not db or not db.dataset_exists('Data', {'Sample': sample_name, 'Classification': '%',
                                                             'Classification_Description': '%',
-                                                            'Hash': '%', 'User_Comment': '%'}, ['Sample']):
+                                                            'Hash': '%', 'Timestamp': datetime.datetime.now(),
+                                                            'User_Comment': '%'}, ['Sample']):
                     sample_index.add(fuzzer[0], sample_file)
 
     return sample_index
@@ -168,6 +173,7 @@ def generate_sample_list(list_filename, files_collected):
         fd.close()
     except (FileExistsError, PermissionError):
         print_err("Could not create file list '%s'!" % list_filename)
+
 
 def stdin_mode(target_cmd):
     return not ("@@" in target_cmd)
@@ -206,7 +212,7 @@ def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, s
 
         # fill script with content
         for f in sample_index.index:
-            fd.writelines("echo Crash\ sample:\ '%s'\\n\n" % f['output'])
+            fd.writelines("echo Crash\ sample:\ '%s'\\n\n" % f['output'])   # noqa
 
             if not stdin_mode(target_cmd):
                 run_cmd = "run " + gdb_run_cmd + "\n"
@@ -307,7 +313,7 @@ def execute_gdb_script(out_dir, script_filename, num_samples, num_threads):
                                                   grepped_output[g+3], clr.RST, ccl, grepped_output[g+1], clr.RST))
         classification_data.append({'Sample': grepped_output[g], 'Classification': grepped_output[g+3],
                                     'Classification_Description': grepped_output[g+1], 'Hash': grepped_output[g+2],
-                                    'User_Comment': ''})
+                                    'Timestamp': datetime.datetime.now(), 'User_Comment': ''})
         i += 1
 
     if i > 1 and i < num_samples:
@@ -326,11 +332,12 @@ def execute_gdb_script(out_dir, script_filename, num_samples, num_threads):
 
 def main(argv):
     show_info()
+    check_gdb()
 
     parser = argparse.ArgumentParser(description="afl-collect copies all crash sample files from an afl sync dir used \
 by multiple fuzzers when fuzzing in parallel into a single location providing easy access for further crash analysis.",
-                                     usage="afl-collect [-d DATABASE] [-e|-g GDB_EXPL_SCRIPT_FILE] [-f LIST_FILENAME]\n \
-[-h] [-j THREADS] [-m] [-r [-rt TIMEOUT]] [-rr] sync_dir collection_dir -- target_cmd")
+                                     usage="afl-collect [-d DATABASE] [-e|-g GDB_EXPL_SCRIPT_FILE] [-f LIST_FILENAME]\n\
+ [-h] [-j THREADS] [-m] [-r [-rt TIMEOUT]] [-rr] sync_dir collection_dir -- target_cmd")
     parser.add_argument("sync_dir", help="afl synchronisation directory crash samples will be collected from.")
     parser.add_argument("collection_dir",
                         help="Output directory that will hold a copy of all crash samples and other generated files. \
@@ -415,7 +422,8 @@ Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
     if args.remove_invalid:
         from afl_utils import afl_vcrash
         invalid_samples, timeout_samples = afl_vcrash.verify_samples(int(args.num_threads), sample_index.inputs(),
-                                                                     args.target_cmd, timeout_secs=float(args.remove_timeout))
+                                                                     args.target_cmd,
+                                                                     timeout_secs=float(args.remove_timeout))
 
         # store invalid samples in db
         if args.gdb_expl_script_file and db_file:
@@ -424,7 +432,7 @@ Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
                 sample_name = sample_index.outputs(input_file=sample)
                 dataset = {'Sample': sample_name[0], 'Classification': 'INVALID',
                            'Classification_Description': 'Sample does not cause a crash in the target.', 'Hash': '',
-                           'User_Comment': ''}
+                           'Timestamp': datetime.datetime.now(), 'User_Comment': ''}
                 if not lite_db.dataset_exists('Data', dataset, ['Sample']):
                     lite_db.insert_dataset('Data', dataset)
 
@@ -432,7 +440,7 @@ Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
                 sample_name = sample_index.outputs(input_file=sample)
                 dataset = {'Sample': sample_name[0], 'Classification': 'TIMEOUT',
                            'Classification_Description': 'Sample caused a target execution timeout.', 'Hash': '',
-                           'User_Comment': ''}
+                           'Timestamp': datetime.datetime.now(), 'User_Comment': ''}
                 if not lite_db.dataset_exists('Data', dataset, ['Sample']):
                     lite_db.insert_dataset('Data', dataset)
 

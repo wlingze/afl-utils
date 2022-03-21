@@ -1,5 +1,5 @@
 """
-Copyright 2015-2016 @_rc0r <hlt99@blinkenshell.org>
+Copyright 2015-2021 @_rc0r <hlt99@blinkenshell.org>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import subprocess
 import afl_utils
 from afl_utils.AflPrettyPrint import clr, print_ok, print_warn, print_err
 
-_rsync_default_options = ['-racz']
+_rsync_default_options = ['-raz']
 
 
 class AflBaseSync(object):
@@ -32,7 +32,8 @@ class AflBaseSync(object):
 
 
 class AflRsync(AflBaseSync):
-    def __init__(self, server_config, fuzzer_config):
+    def __init__(self, server_config, fuzzer_config, rsync_config):
+        self.rsync_config = rsync_config
         # default excludes
         self.__excludes = ['*.cur_input']
         super(AflRsync, self).__init__(server_config, fuzzer_config)
@@ -93,7 +94,7 @@ class AflRsync(AflBaseSync):
             local_path = os.path.join(self.fuzzer_config['sync_dir'], f)
             remote_path = os.path.join(self.server_config['remote_path'], f)
             print_ok('Pushing {} -> {}.sync'.format(local_path, remote_path))
-            self.rsync_put(local_path, remote_path, rsync_excludes=excludes)
+            self.rsync_put(local_path, remote_path, self.rsync_config['put'], rsync_excludes=excludes)
 
     def pull(self):
         fuzzers = self.__get_fuzzers()
@@ -101,7 +102,7 @@ class AflRsync(AflBaseSync):
         local_path = self.fuzzer_config['sync_dir']
         remote_path = self.server_config['remote_path']
 
-        options = list(_rsync_default_options)
+        options = self.rsync_config['get'][:]
         excludes = self.__excludes
 
         # exclude our previously pushed fuzzer states from being pulled again
@@ -129,7 +130,8 @@ class AflRsync(AflBaseSync):
 
 
 def show_info():
-    print(clr.CYA + 'afl-sync ' + clr.BRI + '{}'.format(afl_utils.__version__) + clr.RST + ' by {}'.format(afl_utils.__author__))
+    print(clr.CYA + 'afl-sync ' + clr.BRI + '{}'.format(afl_utils.__version__) + clr.RST +
+          ' by {}'.format(afl_utils.__author__))
     print('Synchronize fuzzer states with a remote location.')
     print('')
 
@@ -150,6 +152,12 @@ locations. Supported are remote transfers through rsync that may use transport c
                         help='Source afl synchronisation directory containing state directories of afl instances.')
     parser.add_argument('dst_storage_dir',
                         help='Destination directory used as fuzzer state storage. This shouldn\'t be an afl sync dir!')
+    parser.add_argument('--chmod',
+                        help='Affect destination\'s file and directory permissions, e.g. --chmod=g+rw to add '
+                             'read/write group permissions.', metavar='PERMS')
+    parser.add_argument('--chown',
+                        help='Affect destination\'s file and directory user and group, e.g. --chown=foo:bar to '
+                        'let the files be owned by user foo and group bar.', metavar='USER:GROUP')
     parser.add_argument('-S', '--session', dest='session', default=None,
                         help='Name of an afl-multicore session. If provided, only fuzzers belonging to '
                              'the specified session will be synced with the destination. Otherwise state '
@@ -159,9 +167,25 @@ locations. Supported are remote transfers through rsync that may use transport c
     args = parser.parse_args(argv[1:])
 
     args.cmd = args.cmd.lower()
-    if not args.cmd in ['push', 'pull', 'sync']:
+    if args.cmd not in ['push', 'pull', 'sync']:
         print_err('Sorry, unknown command requested!')
         sys.exit(1)
+
+    rsync_put_options = _rsync_default_options[:]
+    rsync_get_options = _rsync_default_options[:]
+
+    if args.chmod or args.chown:
+        # these arguments are meaningless with pull since they should only
+        # affect the remote side
+        if args.cmd == 'pull':
+            print_warn('--chmod and --chown have no effect with pull and will be ignored.')
+
+        if args.chmod:
+            rsync_put_options.append('--chmod={}'.format(args.chmod))
+
+        if args.chown:
+            rsync_put_options.append('--protect-args')
+            rsync_put_options.append('--chown={}'.format(args.chown))
 
     if not os.path.exists(args.src_sync_dir):
         if args.cmd in ['pull', 'sync']:
@@ -182,7 +206,12 @@ locations. Supported are remote transfers through rsync that may use transport c
         'exclude_hangs':    False,
     }
 
-    rsyncEngine = AflRsync(server_config, fuzzer_config)
+    rsync_config = {
+        'get': rsync_get_options,
+        'put': rsync_put_options,
+    }
+
+    rsyncEngine = AflRsync(server_config, fuzzer_config, rsync_config)
 
     if args.cmd == 'push':
         rsyncEngine.push()
@@ -192,5 +221,5 @@ locations. Supported are remote transfers through rsync that may use transport c
         rsyncEngine.sync()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main(sys.argv)

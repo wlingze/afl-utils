@@ -1,18 +1,4 @@
-# **NOTE: FUTURE DEVELOPMENT WILL HAPPEN THROUGH [GITLAB](https://gitlab.com/rc0r/afl-utils)!**
-
-As of June, 6th 2018 this project moved to [Gitlab](https://gitlab.com/rc0r/afl-utils) that's why this repository is
-archived and thus read-only until it is entirely removed from Github. Repository removal is scheduled for September,
-15th 2018.
-
-Please report issues and request your merges through the new [project home](https://gitlab.com/rc0r/afl-utils). All
-further discussion - even for existing issues - will take place there.
-
-Thank you,
-
-rc0r
-
-
-# afl-utils [![Build Status](https://travis-ci.org/rc0r/afl-utils.svg?branch=master)](https://travis-ci.org/rc0r/afl-utils)[![Coverage Status](https://coveralls.io/repos/rc0r/afl-utils/badge.svg?branch=master&service=github)](https://coveralls.io/github/rc0r/afl-utils?branch=master)
+# afl-utils [![pipeline status](https://gitlab.com/rc0r/afl-utils/badges/master/pipeline.svg)](https://gitlab.com/rc0r/afl-utils/commits/master)[![coverage report](https://gitlab.com/rc0r/afl-utils/badges/master/coverage.svg)](https://gitlab.com/rc0r/afl-utils/commits/master)
 
 afl-utils is a collection of utilities to assist fuzzing with
 [american-fuzzy-lop (afl)](http://lcamtuf.coredump.cx/afl/).
@@ -25,9 +11,9 @@ afl-utils includes tools for:
 * fuzzer queue synchronisation (`afl-sync`)
 * autonomous utility execution (`afl-cron`)
 
-Various [screenshots](#Screenshots) of the tools in action can be found at the end of this file.  
+Various [screenshots](#screenshots) of the tools in action can be found at the end of this file.
 
-**For installation instructions see [docs/INSTALL.md](https://github.com/rc0r/afl-utils/blob/master/docs/INSTALL.md).**
+**For installation instructions see [docs/INSTALL.md](https://gitlab.com/rc0r/afl-utils/blob/master/docs/INSTALL.md).**
 
 
 ## afl-collect
@@ -72,6 +58,20 @@ During sample verification (enabled using `-r`) `afl-collect` uses a default tim
 that `afl-collect` continues to run even if you happen to encounter some DoS condition
 in the target. If you want to tweak this value use `-r` in conjunction with
 `-rt <timeout>` to specify the timeout in seconds.
+
+#### Note on ASAN-enabled targets
+
+In case `afl-collect` is used to collect crashes that  were  found using  targets with
+enabled ASAN the following `ASAN_OPTIONS` may be necessary  to reproduce crashes while
+using `afl-collect`:
+
+```bash
+ASAN_OPTIONS="abort_on_error=1:symbolize=0" afl-collect ...
+```
+
+The reason for that is that even if the ASAN-enabled binary aborts with some error its return
+code is zero. Since `afl-collect` uses the process return code to make a classifaction
+ASAN-crashes may not be detected without setting `abort_on_error=1`.
 
 ## afl-cron
 
@@ -396,7 +396,7 @@ screen window. Run `afl-multicore` from inside screen!
 "interactive": true
 ```
 
-Environment variables `afl-multicore` will set when using interactive screen mode.
+Environment variables `afl-multicore` will set.
 
 ```json
 "environment": [
@@ -423,7 +423,7 @@ into all of your boxes to check `fuzzer_stats` quickly becomes a PITA...
 Additionally `afl-stats` may dump the current contents of `fuzzer_stats` into a database.
 So upon later inspection you have historical stats information in one place for analysis.
 For twitter setup instructions, please see
-[docs/INSTALL.md](https://github.com/rc0r/afl-utils/blob/master/docs/INSTALL.md)!
+[docs/INSTALL.md](https://gitlab.com/rc0r/afl-utils/blob/master/docs/INSTALL.md)!
 Screenshots of sample tweets can be found in the final section of this document.
 
 Usage example:
@@ -476,21 +476,21 @@ Usage example:
 
 Sample output:
 
-![afl-collect_sample](https://raw.githubusercontent.com/rc0r/afl-utils/master/.scrots/afl_collect_sample.png)
+![afl-collect_sample](https://gitlab.com/rc0r/afl-utils/raw/master/.scrots/afl_collect_sample.png)
 
 ### afl-sync
 
-![afl-sync_diagram](https://raw.githubusercontent.com/rc0r/afl-utils/master/.scrots/afl-sync-diagram.png)
+![afl-sync_diagram](https://gitlab.com/rc0r/afl-utils/raw/master/.scrots/afl-sync-diagram.png)
 
 ### afl-multicore
 
 Sample output (normal mode):
 
-![afl-multicore_sample](https://raw.githubusercontent.com/rc0r/afl-utils/master/.scrots/afl_multicore_sample.png)
+![afl-multicore_sample](https://gitlab.com/rc0r/afl-utils/raw/master/.scrots/afl_multicore_sample.png)
 
 ### afl-stats
 
-![afl-stats_sample](https://raw.githubusercontent.com/rc0r/afl-utils/master/.scrots/afl_stats_sample.png)
+![afl-stats_sample](https://gitlab.com/rc0r/afl-utils/raw/master/.scrots/afl_stats_sample.png)
 
-![afl-stats_tweet](https://raw.githubusercontent.com/rc0r/afl-utils/master/.scrots/afl_stats_tweet.png)
+![afl-stats_tweet](https://gitlab.com/rc0r/afl-utils/raw/master/.scrots/afl_stats_tweet.png)
 

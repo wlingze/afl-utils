@@ -1,5 +1,5 @@
 """
-Copyright 2015-2016 @_rc0r <hlt99@blinkenshell.org>
+Copyright 2015-2021 @_rc0r <hlt99@blinkenshell.org>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,12 +35,24 @@ def show_info():
     print("")
 
 
+def convert_mem_limit(mem_limit):
+    if mem_limit is not None:
+        if mem_limit == "none":
+            return "none"
+        else:
+            try:
+                return int(mem_limit)
+            except ValueError as verr:
+                print_err("Converting mem-limit to int failed. Please use either \"none\" or a valid integer")
+                raise verr
+
+
 def invoke_cmin(input_dir, output_dir, target_cmd, mem_limit=None, timeout=None, qemu=False):
     success = True
     cmin_cmd = "afl-cmin "
 
     if mem_limit is not None:
-        cmin_cmd += "-m %d " % int(mem_limit)
+        cmin_cmd += "-m %s " % convert_mem_limit(mem_limit)
 
     if timeout is not None:
         cmin_cmd += "-t %d " % int(timeout)
@@ -78,7 +90,7 @@ def invoke_tmin(input_files, output_dir, target_cmd, num_threads=1, mem_limit=No
     tmin_cmd = "afl-tmin "
 
     if mem_limit is not None:
-        tmin_cmd += "-m %d " % int(mem_limit)
+        tmin_cmd += "-m %s " % convert_mem_limit(mem_limit)
 
     if timeout is not None:
         tmin_cmd += "-t %d " % int(timeout)
@@ -91,7 +103,8 @@ def invoke_tmin(input_files, output_dir, target_cmd, num_threads=1, mem_limit=No
                                                           output_dir, target_cmd))
 
     for i in range(0, num_threads, 1):
-        t = AflThread.AflTminThread(i, tmin_cmd, target_cmd, output_dir, in_queue, out_queue, in_queue_lock, out_queue_lock)
+        t = AflThread.AflTminThread(i, tmin_cmd, target_cmd, output_dir, in_queue, out_queue, in_queue_lock,
+                                    out_queue_lock)
         thread_list.append(t)
         print_ok("Starting afl-tmin worker %d." % i)
         t.daemon = True
@@ -175,9 +188,8 @@ def afl_reseed(sync_dir, coll_dir):
 def main(argv):
     show_info()
 
-    parser = argparse.ArgumentParser(description="afl-minimize performs several optimization steps to reduce the size\n \
-of an afl-fuzz corpus.",
-                                     usage="afl-minimize [-c COLLECTION_DIR [--cmin [opts]] [--tmin [opts]]] [--reseed]\n \
+    parser = argparse.ArgumentParser(description="afl-minimize performs several optimization steps to reduce the size\n\
+of an afl-fuzz corpus.", usage="afl-minimize [-c COLLECTION_DIR [--cmin [opts]] [--tmin [opts]]] [--reseed]\n \
                    [-d] [-h] [-j] sync_dir -- target_cmd\n")
 
     parser.add_argument("-c", "--collect", dest="collection_dir",
@@ -189,8 +201,9 @@ of an afl-fuzz corpus.",
     parser.add_argument("--cmin-timeout", dest="cmin_timeout", default=None, help="Set timeout for afl-cmin.")
     parser.add_argument("--cmin-qemu", dest="cmin_qemu", default=False, action="store_const", const=True,
                         help="Enable qemu mode afl-cmin.")
-    parser.add_argument("--reseed", dest="reseed", default=False, action="store_const", const=True, help="Reseed afl-fuzz with the \
-collected (and optimized) corpus. This replaces all sync_dir queues with the newly generated corpus.")
+    parser.add_argument("--reseed", dest="reseed", default=False, action="store_const", const=True,
+                        help="Reseed afl-fuzz with the collected (and optimized) corpus. This replaces all sync_dir "
+                             "queues with the newly generated corpus.")
     parser.add_argument("--tmin", dest="invoke_tmin", action="store_const", const=True,
                         default=False, help="Run afl-tmin on minimized collection dir if used together with '--cmin'\
 or on unoptimized collection dir otherwise. Has no effect without '-c'.")

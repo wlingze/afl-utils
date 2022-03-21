@@ -1,5 +1,5 @@
 """
-Copyright 2015-2016 @_rc0r <hlt99@blinkenshell.org>
+Copyright 2015-2021 @_rc0r <hlt99@blinkenshell.org>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -131,7 +131,7 @@ class AflTminThread(threading.Thread):
                 self.in_queue_lock.release()
 
                 cmd = "%s-i %s -o %s -- %s" % (self.tmin_cmd, f, os.path.join(self.output_dir, os.path.basename(f)),
-                                                self.target_cmd)
+                                               self.target_cmd)
                 try:
                     subprocess.call(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, shell=True)
                     self.out_queue_lock.acquire()

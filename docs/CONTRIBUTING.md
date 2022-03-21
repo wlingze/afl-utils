@@ -2,7 +2,7 @@
 
 If you're missing some feature in afl-utils or like to propose some changes, I'd appreciate
 your contributions. Just send your bug reports, feature ideas, code patches or pull requests
-either via Github or directly to `hlt99 at blinkenshell dot org`! However before you do so,
+either via Gitlab or directly to `hlt99 at blinkenshell dot org`! However before you do so,
 please make sure that you've read and understood the rest of this document!
 
   

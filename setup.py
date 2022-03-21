@@ -1,5 +1,5 @@
 """
-Copyright 2015-2016 @_rc0r <hlt99@blinkenshell.org>
+Copyright 2015-2021 @_rc0r <hlt99@blinkenshell.org>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 dependency_links = [
-    'https://github.com/rc0r/exploitable/tarball/experimental#egg=exploitable-1.32-rcor'
+    'https://gitlab.com/rc0r/exploitable/-/archive/experimental/exploitable-experimental.tar.gz#egg=exploitable-1.32-rcor'
 ]
 
 afl_scripts = [
@@ -44,7 +44,7 @@ setup(
     name='afl-utils',
     version=afl_utils.__version__,
     packages=find_packages(),
-    url='https://github.com/rc0r/afl-utils',
+    url='https://gitlab.com/rc0r/afl-utils',
     license='Apache License 2.0',
     author=afl_utils.__author_name__,
     author_email=afl_utils.__author_email__,

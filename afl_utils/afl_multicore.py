@@ -1,5 +1,5 @@
 """
-Copyright 2015-2016 @_rc0r <hlt99@blinkenshell.org>
+Copyright 2015-2021 @_rc0r <hlt99@blinkenshell.org>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,7 +70,7 @@ def afl_cmdline_from_config(config_settings, instance_number):
     if "file" in config_settings:
         afl_cmdline.append("-f")
         if config_settings["file"] != "@@":
-            afl_cmdline.append(config_settings["file"] + "_%03d" % instance_number)
+            afl_cmdline.append("%03d_" % instance_number + config_settings["file"])
         else:
             afl_cmdline.append(config_settings["file"])
 
@@ -176,7 +176,7 @@ def build_master_cmd(conf_settings, master_index, target_cmd):
     # If afl -f file switch was used, automatically use correct input
     # file for master instance.
     if "%%" in target_cmd:
-        target_cmd = target_cmd.replace("%%", conf_settings["file"] + "_%03d" % master_index)
+        target_cmd = target_cmd.replace("%%", "%03d_" % master_index + conf_settings["file"])
     # compile command-line for master
     # $ afl-fuzz -i <input_dir> -o <output_dir> -M <session_name>.000 <afl_args> \
     #   </path/to/target.bin> <target_args>
@@ -195,7 +195,7 @@ def build_slave_cmd(conf_settings, slave_index, target_cmd):
     # If afl -f file switch was used, automatically use correct input
     # file for slave instance.
     if "%%" in target_cmd:
-        target_cmd = target_cmd.replace("%%", conf_settings["file"] + "_%03d" % slave_index)
+        target_cmd = target_cmd.replace("%%",  "%03d_" % slave_index + conf_settings["file"])
     # compile command-line for slaves
     # $ afl-fuzz -i <input_dir> -o <output_dir> -S <session_name>.NNN <afl_args> \
     #   </path/to/target.bin> <target_args>
@@ -206,7 +206,7 @@ def build_slave_cmd(conf_settings, slave_index, target_cmd):
 
 
 def write_pgid_file(conf_settings):
-    if "interactive" in conf_settings and not conf_settings["interactive"]:
+    if "interactive" not in conf_settings or not conf_settings["interactive"]:
         # write/append PGID to file /tmp/afl-multicore.PGID.<SESSION>
         f = open("/tmp/afl_multicore.PGID.%s" % conf_settings["session"], "a")
         if f.writable():
@@ -277,16 +277,16 @@ def auto_startup_delay(config_settings, instance_num, resume=True):
     #    O = 1 / sqrt(N)
     # This might need some tuning!
     if resume:
-        instance_dir = os.path.join(config_settings["output"], "{}{:03d}".format(config_settings["session"], instance_num),
-                                    "queue")
+        instance_dir = os.path.join(config_settings["output"], "{}{:03d}".format(config_settings["session"],
+                                                                                 instance_num), "queue")
     else:
         instance_dir = config_settings["input"]
     sample_list = os.listdir(instance_dir)
     N = len(sample_list)
     T = float(config_settings["timeout"].strip(" +")) if "timeout" in config_settings else 1000.0
-    O = N**(-1/2)
+    _O = N**(-1/2)
 
-    return O * T * N / 1000
+    return _O * T * N / 1000
 
 
 def main(argv):
@@ -301,8 +301,8 @@ in the background. For fuzzer stats see 'out_dir/SESSION###/fuzzer_stats'!",
     parser.add_argument("-s", "--startup-delay", dest="startup_delay", default=None, help="Wait a configurable  amount \
 of time after starting/resuming each afl instance to avoid interference during fuzzer startup. Provide wait time in \
 seconds.")
-    parser.add_argument("-t", "--test", dest="test_run", action="store_const", const=True, default=False, help="Perform \
-a test run by starting a single afl instance in interactive mode using a test output directory.")
+    parser.add_argument("-t", "--test", dest="test_run", action="store_const", const=True, default=False, help="Perform\
+ a test run by starting a single afl instance in interactive mode using a test output directory.")
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_const", const=True,
                         default=False, help="For debugging purposes do not redirect stderr/stdout of the created \
 subprocesses to /dev/null (Default: off). Check 'nohup.out' for further outputs.")
@@ -346,6 +346,10 @@ job offset that allows to resume specific (ranges of) afl-instances.")
             setup_screen(jobs_count, conf_settings["environment"])
         else:
             setup_screen(jobs_count, [])
+    elif "environment" in conf_settings:
+        for env in conf_settings["environment"]:
+            k, v = env.split("=")
+            os.environ[k] = v
 
     target_cmd = build_target_cmd(conf_settings)
 
@@ -384,7 +388,7 @@ job offset that allows to resume specific (ranges of) afl-instances.")
                 fuzzer_inst = subprocess.Popen(" ".join(['nohup', cmd]).split())
             if is_master:
                 if master_count == 1:
-                    print(" Master %03d started inside new screen window" % i)
+                    print(" Master %03d started (PID: %d)" % (i, fuzzer_inst.pid))
                 else:
                     print(" Master %03d/%03d started (PID: %d)" % (i, master_count-1, fuzzer_inst.pid))
             else:

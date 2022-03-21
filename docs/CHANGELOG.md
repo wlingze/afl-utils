@@ -1,5 +1,37 @@
 # afl-utils Changelog
 
+Version 1.35a
+
+  - Changed `afl-multicore` to prefix filenames with their respective job
+    number handed over to `afl-fuzz`'s `-f` switch. Previously the job
+    number was simply appended causing trouble for some fuzzing targets.
+    (Contributed by Krishna Ram Prakash R and @YourButterfly.)
+  - Changed `afl-multicore` to also set environment variables specified in the
+    `afl-multicore` configuration file in case non-interactive mode is used.
+    (Contributed by Philipp Bartsch.)
+  - Updated `afl-sync` to not use the `-c` flag when invoking `rsync` to
+    avoid hashing of large corpora. (Proposed by Denis Kasak.)
+  - Fixed an `UnboundLocalError` in `afl_stats.py` when attempting to parse
+    an empty stats file. (Contributed by Vincent Ulitzsch.)
+
+Version 1.34a
+
+  - Added `--chmod`, `--chown` rsync flags to afl-sync (contributed by
+    Denis Kasak).
+  - Improved bug fix for #34 in afl-multicore (suggested by Bhargava
+    Shastry).
+  - Bug in afl_collect.py fixed that prevented other tools from starting
+    if gdb executable is not present (reported by Henri Salo).
+  - Added support for `-m none` to `afl-minimize`. Thus an infinite memory
+    limit can be passed to `afl-cmin` and `afl-tmin`. (Contributed by
+    Vincent Ulitzsch.)
+  - Fixed `afl-multicore` output to display master PID when using
+    non-interactive mode.
+  - Timestamp field added to `afl-collect` crash sample database.
+    WARNING: This breaks compatibility with existing old database files
+    in a way that appending to old databases is no longer possible w/o
+    updating the database schema to include the timestamp field.
+
 Version 1.33a
 
   - Added `--cmin-qemu`, `--tmin-qemu` options for QEMU mode support

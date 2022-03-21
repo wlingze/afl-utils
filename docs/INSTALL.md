@@ -14,7 +14,7 @@ Python package requirements should be automatically handled by the setup script
 * `nohup` for `afl-multicore` normal mode (I'm using: 8.23 (GNU coreutils))
 * `screen` for `afl-multicore` interactive/screen mode (I'm using: GNU Screen 4.02.01)
 * `gdb` with Python support (for gdb script execution support)
-* [Patched Exploitable](https://github.com/rc0r/exploitable) (for gdb script execution support) (auto-installed)
+* [Patched Exploitable](https://gitlab.com/rc0r/exploitable) (for gdb script execution support) (auto-installed)
 * and of course you'll need [afl](http://lcamtuf.coredump.cx/afl/) for `afl-multicore`, `afl-multikill`
 
 
@@ -26,9 +26,9 @@ set up to work with `gdb`.
 Since `v1.19a` the patched version is auto-installed when installing `afl-utils` using
 `setup.py`. See next section for instructions!
 
-However, if you want to install exploitable manually, get the patched version from GH:  
+However, if you want to install exploitable manually, get the patched version from GL:
 
-    $ git clone https://github.com/rc0r/exploitable
+    $ git clone https://gitlab.com/rc0r/exploitable
 
 Next install exploitable globally or locally according to the instructions in the
 `Usage` section of exploitables' `README.md`!
@@ -36,9 +36,9 @@ Next install exploitable globally or locally according to the instructions in th
 
 ## afl-utils Installation
 
-Now get `afl-utils` from the GH repo:
+Now get `afl-utils` from the GL repo:
 
-    $ git clone https://github.com/rc0r/afl-utils
+    $ git clone https://gitlab.com/rc0r/afl-utils
 
 If you want to stick with the latest development version you're good to go. If you
 prefer to use a release version, run:

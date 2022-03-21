@@ -144,7 +144,9 @@ class AflStatsTestCase(unittest.TestCase):
     def test_parse_stat_file(self):
         self.assertIsNone(afl_stats.parse_stat_file('invalid-stat-file'))
         self.assertDictEqual(test_stats, afl_stats.parse_stat_file('testdata/sync/fuzz000/fuzzer_stats'))
-        self.assertDictEqual(test_complete_stats, afl_stats.parse_stat_file('testdata/sync/fuzz000/fuzzer_stats', summary=False))
+        self.assertDictEqual(test_complete_stats, afl_stats.parse_stat_file('testdata/sync/fuzz000/fuzzer_stats',
+                                                                            summary=False))
+        self.assertIsNone(afl_stats.parse_stat_file('testdata/empty_fuzzer_stats'))
 
     def test_load_stats(self):
         self.assertIsNone(afl_stats.load_stats('invalid-fuzzer-dir'))

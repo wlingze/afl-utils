@@ -4,6 +4,7 @@ from afl_utils.afl_sync import AflRsync
 import os
 import shutil
 import unittest
+from unittest.mock import patch
 
 
 class AflSyncTestCase(unittest.TestCase):
@@ -77,13 +78,19 @@ class AflSyncTestCase(unittest.TestCase):
             'exclude_hangs': True,
         }
 
-        afl_rsync = AflRsync(server_config, fuzzer_config)
+        rsync_config = {
+            'get': afl_sync._rsync_default_options[:],
+            'put': afl_sync._rsync_default_options[:],
+        }
+
+        afl_rsync = AflRsync(server_config, fuzzer_config, rsync_config)
 
         self.assertDictEqual(server_config, afl_rsync.server_config)
         self.assertDictEqual(fuzzer_config, afl_rsync.fuzzer_config)
+        self.assertDictEqual(rsync_config, afl_rsync.rsync_config)
 
     def test_afl_rsync_prepare_sync_command(self):
-        afl_rsync = AflRsync(None, None)
+        afl_rsync = AflRsync(None, None, None)
 
         expected_put_cmdline = [
             'rsync',
@@ -102,15 +109,17 @@ class AflSyncTestCase(unittest.TestCase):
         ]
 
         self.assertListEqual(expected_put_cmdline, afl_rsync._AflRsync__prepare_rsync_commandline('src', 'dst',
+                                                                                                  list(afl_sync._rsync_default_options),
                                                                                                   rsync_excludes=[
                                                                                                       'exclude']))
         self.assertListEqual(expected_get_cmdline, afl_rsync._AflRsync__prepare_rsync_commandline('src', 'dst',
+                                                                                    list(afl_sync._rsync_default_options),
                                                                                     rsync_excludes=['exclude'],
                                                                                     rsync_get=True))
 
     def test_afl_rsync_invoke_rsync(self):
         rsync_cmdline = ['rsync', '--help']
-        afl_rsync = AflRsync(None, None)
+        afl_rsync = AflRsync(None, None, None)
 
         self.assertTrue(afl_rsync._AflRsync__invoke_rsync(rsync_cmdline))
         self.assertFalse(afl_rsync._AflRsync__invoke_rsync(['rsync']))
@@ -130,7 +139,7 @@ class AflSyncTestCase(unittest.TestCase):
             'invalid_fuzz001'
         ]
 
-        afl_rsync = AflRsync(None, fuzzer_config)
+        afl_rsync = AflRsync(None, fuzzer_config, None)
         self.assertListEqual(sorted(expected_fuzzers), sorted(afl_rsync._AflRsync__get_fuzzers()))
 
     def test_afl_rsync_put(self):
@@ -138,8 +147,13 @@ class AflSyncTestCase(unittest.TestCase):
         remote_path = 'testdata/rsync_tmp_store/fuzz000'
         excludes = ['crashes*/', 'hangs*/']
 
-        afl_rsync = AflRsync(None, None)
-        self.assertTrue(afl_rsync.rsync_put(local_path, remote_path, rsync_excludes=excludes))
+        rsync_config = {
+            'get': afl_sync._rsync_default_options[:],
+            'put': afl_sync._rsync_default_options[:],
+        }
+
+        afl_rsync = AflRsync(None, None, rsync_config)
+        self.assertTrue(afl_rsync.rsync_put(local_path, remote_path, afl_rsync.rsync_config['put'], rsync_excludes=excludes))
         self.assertTrue(os.path.exists(remote_path + '.sync/fuzzer_stats'))
         self.assertTrue(os.path.exists(remote_path + '.sync/.cur_input'))
         self.assertFalse(os.path.exists(remote_path + '.sync/crashes'))
@@ -150,8 +164,13 @@ class AflSyncTestCase(unittest.TestCase):
         remote_path = 'testdata/sync/fuzz000'
         excludes = ['crashes*/', 'hangs*/']
 
-        afl_rsync = AflRsync(None, None)
-        self.assertTrue(afl_rsync.rsync_get(remote_path, local_path, rsync_excludes=excludes))
+        rsync_config = {
+            'get': afl_sync._rsync_default_options[:],
+            'put': afl_sync._rsync_default_options[:],
+        }
+
+        afl_rsync = AflRsync(None, None, rsync_config)
+        self.assertTrue(afl_rsync.rsync_get(remote_path, local_path, afl_rsync.rsync_config['get'], rsync_excludes=excludes))
         self.assertTrue(os.path.exists(local_path + '/fuzzer_stats'))
         self.assertFalse(os.path.exists(local_path + '/crashes'))
         self.assertFalse(os.path.exists(local_path + '/hangs'))
@@ -168,12 +187,17 @@ class AflSyncTestCase(unittest.TestCase):
             'exclude_hangs': True,
         }
 
-        afl_rsync = AflRsync(server_config, fuzzer_config)
+        rsync_config = {
+            'get': afl_sync._rsync_default_options[:],
+            'put': afl_sync._rsync_default_options[:],
+        }
+
+        afl_rsync = AflRsync(server_config, fuzzer_config, rsync_config)
         self.assertIsNone(afl_rsync.push())
         self.assertTrue(os.path.exists('testdata/rsync_output_push/fuzz000.sync'))
         self.assertFalse(os.path.exists('testdata/rsync_output_push/fuzz000.sync/.cur_input'))
         self.assertTrue(os.path.exists('testdata/rsync_output_push/fuzz001.sync'))
-        self.assertFalse(os.path.exists('testdata/rsync_output_push/fuzz000.sync/.cur_input'))
+        self.assertFalse(os.path.exists('testdata/rsync_output_push/fuzz001.sync/.cur_input'))
         self.assertFalse(os.path.exists('testdata/rsync_output_push/fuzz002.sync'))
         self.assertFalse(os.path.exists('testdata/rsync_output_push/fuzz002.sync.sync'))
         self.assertFalse(os.path.exists('testdata/rsync_output_push/invalid_fuzz000.sync'))
@@ -191,7 +215,12 @@ class AflSyncTestCase(unittest.TestCase):
             'exclude_hangs': True,
         }
 
-        afl_rsync = AflRsync(server_config, fuzzer_config)
+        rsync_config = {
+            'get': afl_sync._rsync_default_options[:],
+            'put': afl_sync._rsync_default_options[:],
+        }
+
+        afl_rsync = AflRsync(server_config, fuzzer_config, rsync_config)
         self.assertIsNone(afl_rsync.pull())
         self.assertTrue(os.path.exists('testdata/sync/other_fuzz000.sync'))
         self.assertTrue(os.path.exists('testdata/sync/other_fuzz000.sync/crashes'))
@@ -214,7 +243,12 @@ class AflSyncTestCase(unittest.TestCase):
             'exclude_hangs': True,
         }
 
-        afl_rsync = AflRsync(server_config, fuzzer_config)
+        rsync_config = {
+            'get': afl_sync._rsync_default_options[:],
+            'put': afl_sync._rsync_default_options[:],
+        }
+
+        afl_rsync = AflRsync(server_config, fuzzer_config, rsync_config)
         self.assertIsNone(afl_rsync.pull())
         self.assertTrue(os.path.exists('testdata/sync/other_fuzz000.sync'))
         self.assertTrue(os.path.exists('testdata/sync/other_fuzz001.sync'))
@@ -236,7 +270,12 @@ class AflSyncTestCase(unittest.TestCase):
             'exclude_hangs': True,
         }
 
-        afl_rsync = AflRsync(server_config, fuzzer_config)
+        rsync_config = {
+            'get': afl_sync._rsync_default_options[:],
+            'put': afl_sync._rsync_default_options[:],
+        }
+
+        afl_rsync = AflRsync(server_config, fuzzer_config, rsync_config)
         self.assertIsNone(afl_rsync.sync())
 
         # pull assertions
@@ -253,6 +292,36 @@ class AflSyncTestCase(unittest.TestCase):
         self.assertFalse(os.path.exists('testdata/rsync_output_sync/fuzz002.sync.sync'))
         self.assertTrue(os.path.exists('testdata/rsync_output_sync/invalid_fuzz000.sync'))
         self.assertTrue(os.path.exists('testdata/rsync_output_sync/invalid_fuzz001.sync'))
+
+    @patch('afl_utils.afl_sync.AflRsync')
+    def test_main_chmod_chown(self, mock_afl_rsync):
+        argv = [
+            'afl-sync',
+            '--chmod=ABCD',
+            '--chown=EFGH',
+            'pull',
+            'testdata/sync',
+            'remote'
+        ]
+
+        expected_server_config = {
+            'remote_path': 'remote'
+        }
+
+        expected_fuzzer_config = {
+            'sync_dir': 'testdata/sync',
+            'session': None,
+            'exclude_crashes': False,
+            'exclude_hangs': False
+        }
+
+        expected_rsync_config = {
+            'get': ['-raz'],
+            'put': ['-raz', '--chmod=ABCD', '--protect-args', '--chown=EFGH']
+        }
+
+        self.assertIsNone(afl_sync.main(argv))
+        mock_afl_rsync.assert_called_with(expected_server_config, expected_fuzzer_config, expected_rsync_config)
 
     def test_main(self):
         argv = [
