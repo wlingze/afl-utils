@@ -15,12 +15,12 @@ limitations under the License.
 """
 
 import argparse
-import exploitable
 import os
 import queue
 import shutil
 import sys
 import threading
+import hashlib
 
 import afl_utils
 from afl_utils import SampleIndex, AflThread
@@ -179,7 +179,7 @@ def stdin_mode(target_cmd):
     return not ("@@" in target_cmd)
 
 
-def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, script_id=0, intermediate=False):
+def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, gdb_output, exploitable_path, script_id=0, intermediate=False):
     target_cmd = target_cmd.split()
     gdb_target_binary = target_cmd[0]
     gdb_run_cmd = " ".join(target_cmd[1:])
@@ -193,26 +193,20 @@ def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, s
         print_ok("Generating intermediate gdb+exploitable script '%s' for %d samples..." %
                  (script_filename, len(sample_index.outputs())))
 
-    gdb_exploitable_path = None
-    gdbinit = os.path.expanduser("~/.gdbinit")
-    if not os.path.exists(gdbinit) or b"exploitable.py" not in open(gdbinit, "rb").read():
-        gdb_exploitable_path = os.path.join(exploitable.__path__[0], "exploitable.py")
-
     try:
         fd = open(script_filename, "w")
 
         # <script header>
-        # source exploitable.py if necessary
-        if gdb_exploitable_path:
-            fd.writelines("source %s\n" % gdb_exploitable_path)
+        # source exploitable.py
+        fd.writelines("source %s/exploitable/exploitable.py\n" % exploitable_path)
 
         # load executable
         fd.writelines("file %s\n" % gdb_target_binary)
         # </script_header>
+        fd.writelines("set logging file %s\n" % gdb_output)
 
         # fill script with content
         for f in sample_index.index:
-            fd.writelines("echo Crash\ sample:\ '%s'\\n\n" % f['output'])   # noqa
 
             if not stdin_mode(target_cmd):
                 run_cmd = "run " + gdb_run_cmd + "\n"
@@ -225,7 +219,11 @@ def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, s
                 run_cmd = run_cmd.replace("@@", os.path.join(sample_index.output_dir, "'{}'".format(f['output'])))
 
             fd.writelines(run_cmd)
-            fd.writelines("exploitable\n")
+
+            fd.writelines("set logging on\n")
+            fd.writelines("echo Crash\ sample:\ '%s'\\n\n" % f['output'])   # noqa
+            fd.writelines("exploitable -m\n")
+            fd.writelines("set logging off\n")
 
         # <script_footer>
         fd.writelines("quit")
@@ -237,17 +235,23 @@ def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, s
 
 
 # ok, this needs improvement!!!
-def execute_gdb_script(out_dir, script_filename, num_samples, num_threads):
+def execute_gdb_script(out_dir, script_filename, gdb_output, num_samples, num_threads):
     classification_data = []
 
     out_dir = os.path.expanduser(out_dir) + "/"
 
     grep_for = [
-        "Crash sample: '",
-        "Exploitability Classification: ",
-        "Short description: ",
-        "Hash: ",
-        ]
+        "Crash sample: ",       # 0 crash
+
+        "CLASSIFICATION:",      # 1 classification
+        "FAULTING_INSTRUCTION:",  # 2 faulting instruction
+        "SHORT_DESCRIPTION:",   # 3 short description
+        "MAJOR_HASH",           # 4 major hash
+        "MINOR_HASH",           # 5 minor hash
+
+        "STACK_DEPTH:",         # 6 stack depth
+        "STACK_FRAME:"          # 7 stack frame
+    ]
 
     queue_list = []
 
@@ -256,6 +260,11 @@ def execute_gdb_script(out_dir, script_filename, num_samples, num_threads):
     for n in range(0, num_threads, 1):
         script_args = [
             str(gdb_binary),
+
+            # removing other distracting infomation brought by `gdbinit`
+            "--nx",
+
+            # run the script we set up
             "-x",
             str(os.path.join(out_dir, "%s.%d" % (script_filename, n))),
         ]
@@ -264,7 +273,7 @@ def execute_gdb_script(out_dir, script_filename, num_samples, num_threads):
         out_queue_lock = threading.Lock()
         queue_list.append((out_queue, out_queue_lock))
 
-        t = AflThread.GdbThread(n, script_args, out_dir, grep_for, out_queue, out_queue_lock)
+        t = AflThread.GdbThread(n, script_args, out_dir, gdb_output, grep_for, out_queue, out_queue_lock)
         thread_list.append(t)
         print_ok("Executing gdb+exploitable script '%s.%d'..." % (script_filename, n))
         t.daemon = True
@@ -283,42 +292,50 @@ def execute_gdb_script(out_dir, script_filename, num_samples, num_threads):
 
     i = 1
     print("*** GDB+EXPLOITABLE SCRIPT OUTPUT ***")
-    for g in range(0, len(grepped_output)-len(grep_for)+1, len(grep_for)):
-        if grepped_output[g+3] == "EXPLOITABLE":
+    for g in grepped_output:
+        if g.crash_sample == "":
+            continue
+
+        if g.classification == "EXPLOITABLE":
             cex = clr.RED
             ccl = clr.BRI
-        elif grepped_output[g+3] == "PROBABLY_EXPLOITABLE":
+        elif g.classification == "PROBABLY_EXPLOITABLE":
             cex = clr.YEL
             ccl = clr.BRI
-        elif grepped_output[g+3] == "PROBABLY_NOT_EXPLOITABLE":
+        elif g.classification == "PROBABLY_NOT_EXPLOITABLE":
             cex = clr.BRN
             ccl = clr.RST
-        elif grepped_output[g+3] == "NOT_EXPLOITABLE":
+        elif g.classification == "NOT_EXPLOITABLE":
             cex = clr.GRN
             ccl = clr.GRA
-        elif grepped_output[g+3] == "UNKNOWN":
+        elif g.classification == "UNKNOWN":
             cex = clr.BLU
             ccl = clr.GRA
         else:
             cex = clr.GRA
             ccl = clr.GRA
 
-        if len(grepped_output[g]) < 24:
+        if len(g.crash_sample) < 24:
             # Assume simplified sample file names,
             # so save some output space.
             ljust_width = 24
         else:
             ljust_width = 64
-        print("%s[%05d]%s %s: %s%s%s %s[%s]%s" % (clr.GRA, i, clr.RST, grepped_output[g].ljust(ljust_width, '.'), cex,
-                                                  grepped_output[g+3], clr.RST, ccl, grepped_output[g+1], clr.RST))
-        classification_data.append({'Sample': grepped_output[g], 'Classification': grepped_output[g+3],
-                                    'Classification_Description': grepped_output[g+1], 'Hash': grepped_output[g+2],
-                                    'Timestamp': datetime.datetime.now(), 'User_Comment': ''})
+        print("%s[%05d]%s %s: %s%s%s %s[%s]%s" % (clr.GRA, i, clr.RST, g.crash_sample.ljust(ljust_width, '.'), cex,
+                                                  g.classification, clr.RST, ccl, g.short_description, clr.RST))
+        
+        stack_frame_hash = hashlib.md5("".join(g.stack_frame).encode()).hexdigest()
+
+        classification_data.append({'Sample': g.crash_sample, 'Classification': g.classification,
+                                    'Short_Description': g.short_description, 'Hash': g.hash,
+                                    "FaultingInstruction": g.faulting_instruction,
+                                    'Timestamp': datetime.datetime.now(),
+                                    "StackDepth": g.stack_depth, "StackFrame": stack_frame_hash})
         i += 1
 
     if i > 1 and i < num_samples:
         print("%s[%05d]%s %s: %sINVALID SAMPLE (Aborting!)%s" % (clr.GRA, i, clr.RST,
-                                                                 grepped_output[-1].ljust(ljust_width, '.'),
+                                                                 "".ljust(ljust_width, '.'),
                                                                  clr.LRD, clr.RST))
         print(clr.LRD + "Returned data may be incomplete!" + clr.RST)
     print("*** ***************************** ***")
@@ -354,6 +371,10 @@ classification. (Like option '-g', plus script execution.)",
     parser.add_argument("-g", "--generate-gdb-script", dest="gdb_script_file",
                         help="Generate gdb script to run 'exploitable.py' on all collected crash samples. Generated \
 script will be placed into collection directory.", default=None)
+    parser.add_argument("-o", "--gdb-output-file", dest="gdb_output_file",
+                        help="The location where the gdb script output information is saved.", default=None)
+    parser.add_argument("-p", "--exploitable-path", dest="exploitable_path",
+                        help="`exploitable` Library Location.", default=None)
     parser.add_argument("-j", "--threads", dest="num_threads", default=1,
                         help="Enable parallel analysis by specifying the number of threads afl-collect will utilize.")
     parser.add_argument("-m", "--minimize-filenames", dest="min_filename", action="store_const", const=True,
@@ -374,6 +395,12 @@ effect without '-r'.")
 Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
 
     args = parser.parse_args(argv[1:])
+
+    exploitable_path = os.path.abspath(os.path.expanduser(args.exploitable_path))
+    print(exploitable_path)
+    if not os.path.exists(exploitable_path):
+        print_err("exploitable not found! please get https://github.com/wlingze/exploitable")
+        return
 
     sync_dir = os.path.abspath(os.path.expanduser(args.sync_dir))
     if not os.path.exists(sync_dir):
@@ -449,16 +476,21 @@ Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
         print_warn("Removed %d invalid crash samples from index." % len(invalid_samples))
         print_warn("Removed %d timed out samples from index." % len(timeout_samples))
 
+    if args.gdb_output_file:
+        gdb_output = os.path.abspath(os.path.expanduser(args.gdb_output_file))
+    else:
+        gdb_output = "%s/gdb_output" % (out_dir)
+
     # generate gdb+exploitable script
     if args.gdb_expl_script_file:
         divided_index = sample_index.divide(int(args.num_threads))
 
         for i in range(0, int(args.num_threads), 1):
             generate_gdb_exploitable_script(os.path.join(out_dir, args.gdb_expl_script_file), divided_index[i],
-                                            args.target_cmd, i, intermediate=True)
+                                            args.target_cmd, gdb_output, exploitable_path, i, intermediate=True)
 
         # execute gdb+exploitable script
-        classification_data = execute_gdb_script(out_dir, args.gdb_expl_script_file, len(sample_index.inputs()),
+        classification_data = execute_gdb_script(out_dir, args.gdb_expl_script_file, gdb_output, len(sample_index.inputs()),
                                                  int(args.num_threads))
 
         # Submit crash classification data into database
@@ -473,6 +505,10 @@ Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
         seen_add = seen.add
         classification_data_dedupe = [x for x in classification_data
                                       if x['Hash'] not in seen and not seen_add(x['Hash'])]
+        seen = set()
+        seen_add = seen.add
+        classification_data_dedupe = [x for x in classification_data_dedupe
+                                      if x['StackFrame'] not in seen and not seen_add(x['StackFrame'])]
 
         # remove dupe samples identified by exploitable hash
         uninteresting_samples = [x['Sample'] for x in classification_data
@@ -501,9 +537,10 @@ Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
 
         # generate output gdb script
         generate_gdb_exploitable_script(os.path.join(out_dir, args.gdb_expl_script_file), sample_index,
-                                        args.target_cmd, 0)
+                                        args.target_cmd, gdb_output, exploitable_path, 0)
     elif args.gdb_script_file:
-        generate_gdb_exploitable_script(os.path.join(out_dir, args.gdb_script_file), sample_index, args.target_cmd)
+        generate_gdb_exploitable_script(os.path.join(out_dir, args.gdb_script_file),
+                                        sample_index, args.target_cmd, gdb_output, exploitable_path)
 
     print_ok("Copying %d samples into output directory..." % len(sample_index.index))
     files_collected = copy_samples(sample_index)

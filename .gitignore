@@ -55,6 +55,7 @@ target/
 
 # User defined files/dirs
 .idea/
+.vscode/
 test/
 venv/
 scratchpad.md

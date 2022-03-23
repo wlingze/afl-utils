@@ -22,6 +22,35 @@ import afl_utils
 import threading
 
 
+class crash_item:
+    def __init__(self):
+        self.crash_sample = ""
+        self.classification = ""
+        self.faulting_instruction = ""
+        self.short_description = ""
+        self.hash = ""
+        self.stack_depth = 0
+        self.stack_frame = []
+    
+    def set_item(self, sig, attr):
+        if sig == 0:
+            self.crash_sample = attr
+        elif sig == 1:
+            self.classification = attr
+        elif sig == 2:
+            self.faulting_instruction = attr
+        elif sig == 3:
+            self.short_description = attr
+        elif sig == 4:
+            self.hash += attr
+        elif sig == 5:
+            self.hash += attr
+        elif sig == 6:
+            self.stack_depth = int(attr)
+        elif sig == 7:
+            self.stack_frame.append(attr)
+    
+
 class VerifyThread(threading.Thread):
     def __init__(self, thread_id, timeout_secs, target_cmd, in_queue, out_queue, in_queue_lock, out_queue_lock):
         threading.Thread.__init__(self)
@@ -82,32 +111,53 @@ class VerifyThread(threading.Thread):
 
 
 class GdbThread(threading.Thread):
-    def __init__(self, thread_id, gdb_cmd, out_dir, grep_for, out_queue, out_queue_lock):
+    def __init__(self, thread_id, gdb_cmd, out_dir, output_file, grep_for, out_queue, out_queue_lock):
         threading.Thread.__init__(self)
         self.id = thread_id
         self.gdb_cmd = gdb_cmd
         self.out_dir = out_dir
+        self.output_file = output_file
         self.out_queue = out_queue
         self.out_queue_lock = out_queue_lock
         self.grep_for = grep_for
 
     def run(self):
         try:
-            script_output = subprocess.check_output(" ".join(self.gdb_cmd), shell=True, stderr=subprocess.DEVNULL,
-                                                    stdin=subprocess.DEVNULL)
+            subprocess.check_output(" ".join(self.gdb_cmd), shell=True, stderr=subprocess.DEVNULL,
+                                    stdin=subprocess.DEVNULL)
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
-            script_output = e.output
+            print(e.output)
 
-        script_output = script_output.decode(errors='replace').splitlines()
 
+        script_output = []
+        with open(self.output_file) as f:
+            script_output = f.readlines()
+                
+        crash = crash_item()
         for line in script_output:
-            matching = [line.replace(g, '') for g in self.grep_for if g in line]
-            matching = " ".join(matching).strip('\' ')
-            matching = matching.replace(self.out_dir, '')
-            if len(matching) > 0:
-                self.out_queue_lock.acquire()
-                self.out_queue.put(matching)
-                self.out_queue_lock.release()
+            line = line.replace("\n", "")
+            for i in range(8):
+                grep = self.grep_for[i]
+                if grep in line:
+                    if i == 0:
+                        self.out_queue_lock.acquire()
+                        self.out_queue.put(crash)
+                        self.out_queue_lock.release()
+                        crash = crash_item()
+                    crash.set_item(i, line.replace(grep, ""))
+
+
+
+        # script_output = script_output.decode(errors='replace').splitlines()
+
+        # for line in script_output:
+        #     matching = [line.replace(g, '') for g in self.grep_for if g in line]
+        #     matching = " ".join(matching).strip('\' ')
+        #     matching = matching.replace(self.out_dir, '')
+        #     if len(matching) > 0:
+        #         self.out_queue_lock.acquire()
+        #         self.out_queue.put(matching)
+        #         self.out_queue_lock.release()
 
 
 class AflTminThread(threading.Thread):
