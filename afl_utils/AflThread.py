@@ -123,7 +123,7 @@ class GdbThread(threading.Thread):
 
     def run(self):
         try:
-            subprocess.check_output(" ".join(self.gdb_cmd), shell=True, stderr=subprocess.DEVNULL,
+            subprocess.run(" ".join(self.gdb_cmd), shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                     stdin=subprocess.DEVNULL)
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
             print(e.output)

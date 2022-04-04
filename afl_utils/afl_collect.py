@@ -43,9 +43,12 @@ fuzzer_stats_filename = "fuzzer_stats"
 gdb_binary = shutil.which("gdb")
 
 
+stack_frame = {}
+
 # afl-collect database table spec
 db_table_spec = """`Sample` TEXT PRIMARY KEY NOT NULL, `Classification` TEXT NOT NULL,
-`Classification_Description` TEXT NOT NULL, `Hash` TEXT, `Timestamp` DATETIME NOT NULL, `User_Comment` TEXT"""
+`Short_Description` TEXT NOT NULL, `Hash` TEXT, `FaultingInstruction` TEXT NOT NULL, 
+`Timestamp` DATETIME NOT NULL, `StackDepth` TEXT NOT NULL, `StackFrame` TEXT"""
 
 
 def check_gdb():
@@ -185,11 +188,13 @@ def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, g
     gdb_run_cmd = " ".join(target_cmd[1:])
 
     if not intermediate:
+        gdb_output_n = os.path.abspath(os.path.expanduser(gdb_output))
         script_filename = os.path.abspath(os.path.expanduser(script_filename))
         print_ok("Generating final gdb+exploitable script '%s' for %d samples..." % (script_filename,
                                                                                      len(sample_index.outputs())))
     else:
         script_filename = os.path.abspath(os.path.expanduser("%s.%d" % (script_filename, script_id)))
+        gdb_output_n = os.path.abspath(os.path.expanduser("%s.%d" % (gdb_output, script_id)))
         print_ok("Generating intermediate gdb+exploitable script '%s' for %d samples..." %
                  (script_filename, len(sample_index.outputs())))
 
@@ -203,7 +208,9 @@ def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, g
         # load executable
         fd.writelines("file %s\n" % gdb_target_binary)
         # </script_header>
-        fd.writelines("set logging file %s\n" % gdb_output)
+        with open(gdb_output_n, 'w+') as file:
+            file.truncate(0)
+        fd.writelines("set logging file %s\n" % gdb_output_n)
 
         # fill script with content
         for f in sample_index.index:
@@ -221,7 +228,7 @@ def generate_gdb_exploitable_script(script_filename, sample_index, target_cmd, g
             fd.writelines(run_cmd)
 
             fd.writelines("set logging on\n")
-            fd.writelines("echo Crash\ sample:\ '%s'\\n\n" % f['output'])   # noqa
+            fd.writelines("echo Crash\ sample:\ %s\\n\n" % f['output'])   # noqa
             fd.writelines("exploitable -m\n")
             fd.writelines("set logging off\n")
 
@@ -273,7 +280,8 @@ def execute_gdb_script(out_dir, script_filename, gdb_output, num_samples, num_th
         out_queue_lock = threading.Lock()
         queue_list.append((out_queue, out_queue_lock))
 
-        t = AflThread.GdbThread(n, script_args, out_dir, gdb_output, grep_for, out_queue, out_queue_lock)
+        gdb_output_n = os.path.abspath(os.path.expanduser("%s.%d" % (gdb_output, n)))
+        t = AflThread.GdbThread(n, script_args, out_dir, gdb_output_n, grep_for, out_queue, out_queue_lock)
         thread_list.append(t)
         print_ok("Executing gdb+exploitable script '%s.%d'..." % (script_filename, n))
         t.daemon = True
@@ -323,8 +331,10 @@ def execute_gdb_script(out_dir, script_filename, gdb_output, num_samples, num_th
             ljust_width = 64
         print("%s[%05d]%s %s: %s%s%s %s[%s]%s" % (clr.GRA, i, clr.RST, g.crash_sample.ljust(ljust_width, '.'), cex,
                                                   g.classification, clr.RST, ccl, g.short_description, clr.RST))
-        
+
         stack_frame_hash = hashlib.md5("".join(g.stack_frame).encode()).hexdigest()
+        if stack_frame_hash not in stack_frame:
+            stack_frame[stack_frame_hash] = g.stack_frame
 
         classification_data.append({'Sample': g.crash_sample, 'Classification': g.classification,
                                     'Short_Description': g.short_description, 'Hash': g.hash,
@@ -345,6 +355,16 @@ def execute_gdb_script(out_dir, script_filename, gdb_output, num_samples, num_th
         os.remove(os.path.join(out_dir, "%s.%d" % (script_filename, n)))
 
     return classification_data
+
+
+def print_frame():
+    with open("stack_frame", 'w+') as file:
+        file.truncate(0)
+        for x in stack_frame:
+            file.writelines("stack_frame_hash: %s\n" % x)
+            file.writelines("stack_frame\n")
+            for l in stack_frame[x]:
+                file.writelines(l + "\n")
 
 
 def main(argv):
@@ -493,6 +513,7 @@ Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
         classification_data = execute_gdb_script(out_dir, args.gdb_expl_script_file, gdb_output, len(sample_index.inputs()),
                                                  int(args.num_threads))
 
+        print_frame()
         # Submit crash classification data into database
         if db_file:
             print_ok("Saving sample classification info to database.")
@@ -501,13 +522,13 @@ Use '@@' to specify crash sample input file position (see afl-fuzz usage).")
                     lite_db.insert_dataset('Data', dataset)
 
         # de-dupe by exploitable hash
+        seen_aux = set()
+        seen_add_aux = seen_aux.add
+        classification_data_dedupe_aux = [x for x in classification_data
+                                          if x['Hash'] not in seen_aux and not seen_add_aux(x['Hash'])]
         seen = set()
         seen_add = seen.add
-        classification_data_dedupe = [x for x in classification_data
-                                      if x['Hash'] not in seen and not seen_add(x['Hash'])]
-        seen = set()
-        seen_add = seen.add
-        classification_data_dedupe = [x for x in classification_data_dedupe
+        classification_data_dedupe = [x for x in classification_data_dedupe_aux
                                       if x['StackFrame'] not in seen and not seen_add(x['StackFrame'])]
 
         # remove dupe samples identified by exploitable hash
